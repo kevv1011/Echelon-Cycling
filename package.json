@@ -1,0 +1,24 @@
+{
+  "name": "echelon-cycling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:ui": "node scripts/verify-live-ui.mjs",
+    "test": "node --test tests/physics.test.js tests/weather.test.js tests/routes.test.js tests/gps.test.js tests/lifecycle.test.js"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^26.1.0",
+    "vite": "^6.4.1"
+  }
+}
