@@ -1,0 +1,2 @@
+import {useEffect,useState} from 'react';
+export function useClock(interval=1000){const [clock,setClock]=useState(()=>({wall:Date.now(),mono:typeof performance==='undefined'?0:performance.now()}));useEffect(()=>{const tick=()=>setClock({wall:Date.now(),mono:performance.now()});const id=setInterval(tick,interval);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(id);document.removeEventListener('visibilitychange',tick);};},[interval]);return clock;}
