@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculatePlan, windRelation } from '../src/utils/cyclingPhysics.js';
 import { defaultProfile } from '../src/data/routes.js';
-import { parseCommand } from '../src/utils/director.js';
+import { parseCommand, directorRequest, directorAnswer } from '../src/utils/director.js';
+import { routes } from '../src/data/routes.js';
 import { demoWeather } from '../src/services/weatherApi.js';
 const ride = { routeId:'clark',distance:42,elevation:380,effort:'z2',condition:'dry',date:'2026-10-18',time:'05:30' };
 test('rear load, larger tires, wet roads and tubes change pressure in the expected directions',()=>{
@@ -34,4 +35,36 @@ test('director applies route, distance, rider, setup, effort and AM start atomic
 });
 test('demo weather crosses midnight without wrapping back to the ride date',()=>{
  const h=demoWeather({...ride,time:'23:30'},3);assert.equal(h[0].time,'2026-10-18T23:00');assert.equal(h[1].time,'2026-10-19T00:00');
+});
+test('greetings, thanks and unsupported chat do not become ride briefings',()=>{
+ for(const message of ['hello','Hey there!','Hello, how are you?','good morning','thanks','Tell me a joke']){
+  const request=directorRequest(message,ride,defaultProfile);
+  assert.equal(request.type,'reply');assert.ok(!request.text.includes('SETUP'));assert.equal(request.ride,undefined);
+ }
+ assert.match(directorRequest('hello',ride,defaultProfile).text,/Hey!/);
+ assert.match(directorRequest('Tell me a joke',ride,defaultProfile).text,/didn’t recognize/);
+});
+test('questions preview their own context while commands explicitly apply changes',()=>{
+ const question=directorRequest('How many gels for the 112km Monasterio ride at Tempo?',ride,defaultProfile);
+ assert.equal(question.apply,false);assert.equal(question.topic,'fuel');assert.equal(question.ride.routeId,'monasterio');assert.equal(question.ride.distance,112);assert.equal(ride.routeId,'clark');
+ const command=directorRequest('Set my ride to 60km at Tempo',ride,defaultProfile);
+ assert.equal(command.apply,true);assert.equal(command.ride.distance,60);
+ const advice=directorRequest('Should I switch to 30mm tubeless?',ride,defaultProfile);assert.equal(advice.apply,false);assert.equal(advice.topic,'pressure');
+});
+test('weather questions and unrelated substrings cannot silently change road conditions or effort',()=>{
+ const auto={...ride,condition:'auto'};
+ assert.equal(directorRequest('Will it rain tomorrow?',auto,defaultProfile).ride.condition,'auto');
+ const unrelated=parseCommand('I am training and learning about databases',auto,defaultProfile);
+ assert.equal(unrelated.ride.effort,auto.effort);assert.equal(unrelated.ride.condition,'auto');
+});
+test('focused fuel and wind answers use the requested model and forecast without a full briefing',()=>{
+ const route=routes.find(r=>r.id==='clark'),weather=demoWeather(ride,3),plan=calculatePlan(defaultProfile,ride,weather);
+ const fuel=directorAnswer('fuel',route,ride,defaultProfile,plan,weather,'live');
+ assert.ok(fuel.includes(`${plan.gels} gels`));assert.ok(fuel.includes(`${plan.totalCarbs} g`));assert.ok(!fuel.includes('SETUP'));
+ const wind=directorAnswer('wind',route,ride,defaultProfile,plan,weather,'demo');
+ assert.ok(wind.includes('Simulated weather'));assert.ok(wind.includes(`${weather[0].wind} km/h`));assert.ok(!wind.includes('FUEL'));
+});
+test('FTP and bike weight update their actual fields rather than rider weight',()=>{
+ const ftp=parseCommand('Set my FTP to 280 watts',ride,defaultProfile);assert.equal(ftp.profile.ftp,280);
+ const bike=parseCommand('My bike weighs 8kg',ride,defaultProfile);assert.equal(bike.profile.bikeWeight,8);assert.equal(bike.profile.riderWeight,defaultProfile.riderWeight);
 });

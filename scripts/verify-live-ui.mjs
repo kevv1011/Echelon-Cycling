@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
+import {Simulate} from 'react-dom/test-utils';
 import {createServer} from 'vite';
 
 const hostedDemo=process.argv.includes('--hosted-demo');
@@ -13,7 +14,8 @@ for(const [key,value] of Object.entries({window:dom.window,document:dom.window.d
  replaced.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,writable:true,configurable:true});
 }
 Object.defineProperty(window,'isSecureContext',{value:true});
-let positionCallback,watchCalls=0,cleared=0,backendRequests=0;
+let positionCallback,watchCalls=0,cleared=0,backendRequests=0,forecastRequests=0,releaseForecast;
+const forecastGate=new Promise(resolve=>releaseForecast=resolve);
 if(hostedDemo)localStorage.setItem('echelon:private-mode','true');
 Object.defineProperty(navigator,'geolocation',{value:{watchPosition:callback=>{positionCallback=callback;watchCalls++;return 42;},clearWatch:id=>{assert.equal(id,42);cleared++;}}});
 const originalFetch=globalThis.fetch;
@@ -23,6 +25,7 @@ globalThis.fetch=async input=>{
  let data;
  if(url.pathname==='/api/auth/status')data={passwordRequired:false,authenticated:true,sessionRemainingSeconds:null};
  else if(url.hostname==='api.open-meteo.com'){
+  forecastRequests++;await forecastGate;
   const first=new Date(`${url.searchParams.get('start_date')}T00:00:00Z`),time=Array.from({length:72},(_,i)=>new Date(+first+i*3600000).toISOString().slice(0,16));
   data={hourly:{time,temperature_2m:time.map(()=>28),apparent_temperature:time.map(()=>31),precipitation_probability:time.map(()=>10),wind_speed_10m:time.map(()=>12),wind_direction_10m:time.map(()=>45)}};
  }else throw new Error(`Unexpected integration request: ${url.pathname}`);
@@ -36,6 +39,18 @@ try{
  await act(async()=>{root.render(React.createElement(React.StrictMode,null,React.createElement(App)));await flush();});
  assert.equal(watchCalls,0,'Loading the app must not request location');
  if(hostedDemo){assert.ok(document.querySelector('.topbar').textContent.includes('DEMO MODE'),'Hosted demo identifies itself');assert.ok(!document.querySelector('.access-button'),'Hosted demo has no private sign-in control');}
+ const navigate=async section=>{const button=[...document.querySelectorAll('.mobile-nav button')].find(b=>b.textContent===section);assert.ok(button);await act(async()=>button.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));assert.equal(button.getAttribute('aria-pressed'),'true');};
+ await navigate('Chat');assert.equal(document.querySelector('.app-shell').dataset.mobileView,'chat');
+ const message=async text=>{const input=document.getElementById('director-input');await act(async()=>Simulate.change(input,{target:{value:text}}));const button=document.querySelector('.send-button');assert.equal(button.disabled,false);await act(async()=>{button.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await flush();});};
+ const lastReply=()=>[...document.querySelectorAll('.message.assistant p')].at(-1).textContent;
+ const forecastBefore=forecastRequests;
+ await message('hello');assert.match(lastReply(),/Hey!/);assert.ok(!lastReply().includes('SETUP'));assert.equal(forecastRequests,forecastBefore,'Greeting does not start another forecast request');
+ releaseForecast();await act(async()=>await flush());
+ await message('How many gels for the 112km Monasterio ride at Tempo?');assert.match(lastReply(),/Monasterio/);assert.match(lastReply(),/gels/);assert.equal(document.getElementById('route').value,'clark','Question previews leave selected ride unchanged');
+ await message('Set my ride to 60km at Tempo');assert.ok(document.querySelector('.change-list').textContent.includes('60 km'));assert.equal(document.querySelector('[aria-label="Pace effort"]').value,'tempo','Explicit command updates dashboard');
+ await message('Tell me a joke');assert.match(lastReply(),/didn’t recognize/);
+ const themeButton=document.querySelector('.theme-toggle');assert.equal(document.documentElement.dataset.theme,'dark');await act(async()=>themeButton.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));assert.equal(document.documentElement.dataset.theme,'light');assert.equal(localStorage.getItem('echelon:theme'),'light');assert.equal(themeButton.getAttribute('aria-label'),'Switch to dark mode');
+ await navigate('Ride');assert.equal(document.querySelector('.app-shell').dataset.mobileView,'ride');
  const start=[...document.querySelectorAll('button')].find(b=>b.textContent==='Start ride');
  assert.ok(start,'Start ride control exists');
  await act(async()=>{start.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await flush();});
@@ -52,13 +67,14 @@ try{
  const before=document.querySelectorAll('.leaflet-overlay-pane path').length;
  await act(async()=>{positionCallback(fix(Date.now(),15.00011));await flush();});
  assert.ok(document.querySelectorAll('.leaflet-overlay-pane path').length<=before+1,'Location updates reuse layers');
+ await navigate('Chat');assert.equal(cleared,0,'Opening chat does not stop an active ride');await navigate('Ride');assert.equal(watchCalls,1,'Switching sections does not create a second GPS watch');
  await act(async()=>{window.dispatchEvent(new CustomEvent('echelon:api-disconnected',{detail:{clearOffline:true}}));await flush();});
  assert.equal(cleared,1,'Sign-out closes the native watch');
  assert.equal(document.querySelector('.gps-badge').textContent,'GPS OFF');
  assert.ok(document.querySelector('.ride-live-metrics').textContent.includes('0.00'),'Sign-out clears the active ride when requested');
  assert.ok(!localStorage.getItem('echelon:gps'),'GPS history is not persisted');
  if(hostedDemo)assert.equal(backendRequests,0,'Hosted demo must make zero backend requests');
- console.log(`${hostedDemo?'Hosted demo':'Live dashboard'} integration passed: opt-in GPS, changing metrics, Leaflet layers, and sign-out cleanup.${hostedDemo?' No backend requests or sign-in required.':''}`);
+ console.log(`${hostedDemo?'Hosted demo':'Live dashboard'} integration passed: relevant chat, read-only questions, explicit commands, theme toggle, mobile navigation, opt-in GPS, Leaflet layers and sign-out cleanup.${hostedDemo?' No backend requests or sign-in required.':''}`);
 }finally{
  await act(async()=>root.unmount());await server.close();globalThis.fetch=originalFetch;dom.window.close();
  for(const [key,descriptor] of replaced){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}

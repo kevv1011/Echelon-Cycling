@@ -7,6 +7,8 @@ import useRideTelemetry from '../src/hooks/useRideTelemetry.js';
 import useApiSession from '../src/hooks/useApiSession.js';
 import {useClock} from '../src/hooks/useClock.js';
 import {apiRequest,advanceAuthEpoch} from '../src/services/api.js';
+import useTheme from '../src/hooks/useTheme.js';
+import useMobileViewport from '../src/hooks/useMobileViewport.js';
 
 function setup(){
  const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost:5173',pretendToBeVisual:true});
@@ -86,4 +88,30 @@ test('sign-out in another tab immediately locks this tab too',async()=>{
  globalThis.fetch=async()=>new Response(JSON.stringify({passwordRequired:true,authenticated:true,sessionRemainingSeconds:1800}),{headers:{'Content-Type':'application/json'}});
  function Harness(){api=useApiSession();return null;}
  try{await act(async()=>env.root.render(React.createElement(Harness)));assert.equal(api.authenticated,true);window.addEventListener('echelon:api-disconnected',()=>notifications++);await act(async()=>window.dispatchEvent(new window.StorageEvent('storage',{key:'echelon:auth-event',newValue:JSON.stringify({type:'disconnected',clearOffline:true})})));assert.equal(api.authenticated,false);assert.equal(notifications,1);}finally{globalThis.fetch=originalFetch;await env.cleanup();}
+});
+
+test('theme follows the system initially and persists an explicit choice across mounts',async()=>{
+ const env=setup(),previous=Object.getOwnPropertyDescriptor(globalThis,'matchMedia');let api;
+ const media={matches:true,addEventListener(){},removeEventListener(){}};
+ Object.defineProperty(globalThis,'matchMedia',{value:()=>media,writable:true,configurable:true});
+ function Harness(){api=useTheme();return null;}
+ try{
+  await act(async()=>env.root.render(React.createElement(Harness)));assert.equal(document.documentElement.dataset.theme,'light');
+  await act(async()=>api.toggleTheme());assert.equal(document.documentElement.dataset.theme,'dark');assert.equal(localStorage.getItem('echelon:theme'),'dark');
+  await act(async()=>env.root.render(React.createElement(Harness,{key:'reload'})));assert.equal(api.theme,'dark','Stored choice wins over light system preference');
+  localStorage.removeItem('echelon:theme');await act(async()=>window.dispatchEvent(new window.StorageEvent('storage',{key:'echelon:theme'})));assert.equal(api.theme,'light');
+ }finally{await env.cleanup();if(previous)Object.defineProperty(globalThis,'matchMedia',previous);else delete globalThis.matchMedia;}
+});
+
+test('visible viewport tracks a phone keyboard and removes listeners on unmount',async()=>{
+ const env=setup(),viewport=new window.EventTarget();Object.assign(viewport,{height:800,scale:1});Object.defineProperty(window,'visualViewport',{value:viewport,configurable:true});
+ function Harness(){useMobileViewport();return React.createElement('textarea',{'aria-label':'Chat'});}
+ try{
+  await act(async()=>env.root.render(React.createElement(Harness)));
+  assert.equal(document.documentElement.style.getPropertyValue('--viewport-height'),'800px');
+  const input=document.querySelector('textarea');Object.defineProperty(document,'activeElement',{get:()=>input,configurable:true});viewport.height=430;viewport.dispatchEvent(new Event('resize'));
+  assert.equal(document.documentElement.style.getPropertyValue('--viewport-height'),'430px');assert.equal(document.documentElement.hasAttribute('data-keyboard-open'),true);
+  viewport.height=800;viewport.dispatchEvent(new Event('resize'));assert.equal(document.documentElement.hasAttribute('data-keyboard-open'),false);
+  await act(async()=>env.root.render(null));viewport.height=400;viewport.dispatchEvent(new Event('resize'));assert.equal(document.documentElement.style.getPropertyValue('--viewport-height'),'');
+ }finally{await env.cleanup();}
 });

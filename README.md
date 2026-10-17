@@ -20,8 +20,6 @@ No downloads. No terminal. Just open the demo and plan a ride.
 
 Pick a route, change your rider setup and ask the Ride Director for a plan. No account or installation required.
 
-> **First launch:** the demo link becomes available after the owner enables GitHub Pages and pushes the included deployment workflow. [Maintainer setup](#publish-demo).
-
 | Try it out | What happens |
 | --- | --- |
 | Rider profile and saved cue sheets | Saved only in your current browser |
@@ -47,10 +45,10 @@ Your demo plans stay on this device. GPS starts only with your permission, and r
    How many gels for the 112km Monasterio ride at Tempo?
    ```
 
-   The Director uses a local command parser and waits for the matching forecast before briefing you. No chat API key needed.
+   Say **hello** for a greeting, ask **help** for examples, or ask a focused question about wind, fuel, pacing or pressure. Questions preview the requested ride without changing the dashboard. Explicit commands such as **Set my ride to 60km at Tempo** update your plan, with a visible change summary. Ride calculations wait for the matching forecast; greetings and help respond immediately. The Director runs locally with supported intents and calculations, rather than a general-purpose AI chat service. No chat API key is needed.
 
 4. **Save your plan.** Keep a cue sheet with the original rider profile, forecast source, calculations and briefing. Restore it later for fresh weather, export plain text, or print/save as PDF.
-5. **Try a real recording.** Choose **Enable GPS** or **Start ride**, allow location access, and head outdoors with a GPS-capable device. Pause, resume and finish, then export the GPX before closing the tab.
+5. **Try a real recording.** On your phone, open **Ride**, then choose **Enable GPS** or **Start ride**, allow location access, and head outdoors with a GPS-capable device. Pause, resume and finish, then export the GPX before closing the tab.
 
 The gels are estimates. The temptation to turn a recovery spin into Tempo is entirely yours.
 
@@ -66,6 +64,12 @@ Four Central Luzon presets get you started:
 | Monasterio | 112 km | 1,150 m |
 
 Dial in distance, elevation, road conditions and effort, then explore hourly temperature, feels-like temperature, rain probability, wind and wind direction across the estimated moving window. Echelon calculates pressure, speed, duration, power, carbs, gel equivalents, fluids and sodium to help you pack and pace.
+
+## 📱 Built around your phone
+
+Use the bottom navigation to move between **Plan** (route, forecast and setup), **Ride** (GPS, recording controls and live map), and **Chat** (Ride Director). Switching sections keeps an active recording running. Buttons have larger touch areas, forms use readable text, and chat adapts to the phone's visible viewport when the keyboard opens. On desktop, the dashboard and Director appear together.
+
+Tap the **sun/moon button** in the header to switch between light and dark mode. Echelon starts with your device's preferred appearance and remembers your choice in this browser.
 
 ## 📍 Live GPS, ride metrics and time
 
@@ -217,7 +221,7 @@ Open **http://127.0.0.1:4173**. Build output goes into `dist/`. Configure the do
 1. Open the repository's **[Settings → Pages](https://github.com/kevv1011/Echelon-Cycling/settings/pages)**.
 2. Under **Build and deployment → Source**, select **GitHub Actions**.
 3. Commit and push the included workflow, hosted-demo app changes and README to `main` using your usual workflow.
-4. In **[Actions](https://github.com/kevv1011/Echelon-Cycling/actions)**, wait for **Deploy Echelon demo** to finish successfully. Its deployment link is the demo URL above. After the first successful deployment, remove the first-launch note from the demo section.
+4. In **[Actions](https://github.com/kevv1011/Echelon-Cycling/actions)**, wait for **Deploy Echelon demo** to finish successfully. Its deployment link is the demo URL above.
 
 Later pushes to `main` update the demo automatically. You can also run the workflow manually from Actions. Only the built `dist/` directory is published; the Python server, local database and private account settings are not deployed. The workflow forces browser-only persistence and builds with `VITE_HOSTED_DEMO=true`, which labels the demo, hides private sign-in and disables backend requests/route comparison. It uses GitHub's built-in deployment token, so no personal token or API key is needed.
 
@@ -229,7 +233,7 @@ Setup follows the official [GitHub Pages workflow guide](https://docs.github.com
 
 </details>
 
-Thirty-two frontend checks cover physics, chat, weather selection/cache freshness, custom geometry, GPX escaping, production CSP, GPS quality/jump/jitter filtering, pause/resume, watch cleanup, real clock ticking, session-status races and cross-tab sign-out. Twenty-seven backend tests cover persistence, idle/absolute session expiry, token rotation/cookie flags, access/request boundaries, routing/provider failures and graph safety heuristics. `npm run test:ui` mounts the full dashboard in a test DOM with mocked GPS/API data and verifies Leaflet layers, changing metrics and sign-out cleanup without real location access or tile downloads. These checks do not replace hardware field testing. Dependency audits are clean after patching the local environment's pip.
+Thirty-nine frontend checks cover physics, chat intent/relevance, question previews, forecast selection/cache freshness, theme persistence, phone keyboard viewport handling, custom geometry, GPX escaping, production CSP, GPS filtering, pause/resume, watch cleanup, clock updates and session races. Twenty-seven backend tests cover persistence, idle/absolute session expiry, token rotation/cookie flags, access/request boundaries, routing/provider failures and graph safety heuristics. `npm run test:ui` mounts the full dashboard in a test DOM with mocked GPS/API data and checks greetings during forecast loading, focused replies, explicit ride changes, theme toggling, mobile navigation, Leaflet layers and sign-out cleanup. Add `-- --hosted-demo` to also verify that the demo makes no backend requests. These checks do not replace browser layout review or hardware field testing. Dependency audits are time-specific; see [SECURITY.md](SECURITY.md) for commands to rerun them.
 
 The production build and React render checks pass. HTTP checks verify production CSP/framing headers, the same-origin API proxy, uncached private responses and rejection of unexpected Host/Origin headers. Live road-data verification encountered upstream HTTP 500/502 errors and timeouts at the public Overpass providers; route logic and failure behavior are verified with controlled road graphs. A browser automation surface is unavailable in this session, so interactive map/visual review remains for local testing. PostgreSQL compatibility is implemented with SQLAlchemy and psycopg but is not integration-tested against a running PostgreSQL instance.
 
