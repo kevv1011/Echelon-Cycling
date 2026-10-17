@@ -1,5 +1,6 @@
 import { validatedApiBase } from '../utils/apiConfig.js';
 export const API_BASE = validatedApiBase(import.meta.env?.VITE_API_URL || '');
+export const hostedDemo = import.meta.env?.VITE_HOSTED_DEMO === 'true';
 let authEpoch=0;
 export const getAuthEpoch=()=>authEpoch;
 export const advanceAuthEpoch=()=>++authEpoch;
@@ -9,6 +10,7 @@ export function notifyAuthChange(type,clearOffline=false){
 }
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 export async function apiRequest(path, options = {}) {
+  if(hostedDemo)throw new ApiError('This feature is available in the full app, outside the browser demo.',503);
   const startedEpoch=authEpoch;
   const res = await fetch(`${API_BASE}/api${path}`, { credentials: 'include', signal: AbortSignal.timeout(10000), ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });
   if (!res.ok) {

@@ -6,43 +6,33 @@ Echelon is a wind, weather and ride-planning co-pilot for road cyclists. Plan a 
 
 A carbon-and-amber dashboard brings together hourly forecasts, pacing and fueling estimates, custom maps, and opt-in live GPS. Built with **React 18 + Vite**, with an optional **FastAPI + SQLAlchemy** backend. Package name: `echelon-cycling`.
 
-[Try demo mode](#demo-mode) · [Take a quick tour](#quick-tour) · [Build a route](#build-your-own-route) · [Run the backend](#fastapi-live-mode) · [Security](SECURITY.md)
+### [▶ Demo Mode — try Echelon in your browser](https://kevv1011.github.io/Echelon-Cycling/)
+
+No downloads. No terminal. Just open the demo and plan a ride.
+
+[Take a quick tour](#quick-tour) · [Build a route](#build-your-own-route) · [Developer setup](#developer-setup) · [Security](SECURITY.md)
 
 <a id="demo-mode"></a>
 
 ## 🕹️ Try demo mode
 
-**No account, API key or Python setup needed to explore the dashboard.** You need Node.js 20.18+ (or 22+) and npm.
+**[Open Demo Mode →](https://kevv1011.github.io/Echelon-Cycling/)**
 
-```powershell
-git clone https://github.com/kevv1011/Echelon-Cycling.git
-cd Echelon-Cycling
-npm install
-npm run dev
-```
+Pick a route, change your rider setup and ask the Ride Director for a plan. No account or installation required.
 
-Open **http://127.0.0.1:5173**. Already have the project? Run the last two commands from its folder.
+> **First launch:** the demo link becomes available after the owner enables GitHub Pages and pushes the included deployment workflow. [Maintainer setup](#publish-demo).
 
-Demo mode is the default. To switch an existing live-mode checkout back, set these values in `.env.local`, then restart Vite:
-
-```dotenv
-VITE_USE_MOCK_API=true
-VITE_API_URL=
-```
-
-If `.env.local` does not exist, copy `.env.example` to it first. Edit an existing file rather than replacing your configuration.
-
-| In demo mode | What happens |
+| Try it out | What happens |
 | --- | --- |
-| Rider profile and saved cue sheets | Saved in this browser's localStorage |
+| Rider profile and saved cue sheets | Saved only in your current browser |
 | Weather | Real Open-Meteo forecasts when available; matching cached data or clearly labeled simulated data on failure |
-| Pacing, tire pressure and fueling | Calculated from your selected ride and rider settings |
+| Pacing, tire pressure and fueling | Estimates update as you change the ride and rider settings |
 | Clock | Ticks in Philippine time (PHT / UTC+8) |
-| GPS and recorded ride metrics | Use your device's location after permission; movement requires actual accepted GPS fixes |
-| Street map | Loads OpenStreetMap tiles over the internet |
-| Custom route comparison | Requires the FastAPI backend, even in demo mode |
+| GPS and recorded ride metrics | Optional: allow location access to record actual movement on a compatible device |
+| Street map | Explore OpenStreetMap in your browser |
+| Custom route comparison and private owner sign-in | Available in the backend-enabled app; not included in the hosted demo |
 
-**Demo means browser storage, not a fake ride.** GPS never starts automatically, and simulated weather is labeled. Forecasts and map tiles need internet access; an offline cold launch is not guaranteed.
+Your demo plans stay on this device. GPS starts only with your permission, and readings depend on actual movement. Internet access is needed for weather and map tiles. Export an active GPS recording before refreshing or leaving the page.
 
 <a id="quick-tour"></a>
 
@@ -178,6 +168,32 @@ Echelon's numbers are planning estimates. Open the notes below to see what goes 
 
 ## 🛠️ Workshop: build and checks
 
+<a id="developer-setup"></a>
+
+### Run locally (developers)
+
+These steps are for running your own copy or contributing. Demo visitors can use the **Demo Mode** link above.
+
+Requires Node.js 20.18+ (or 22+) and npm:
+
+```powershell
+git clone https://github.com/kevv1011/Echelon-Cycling.git
+cd Echelon-Cycling
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:5173**. Browser-only persistence is the default. To restore it in an existing checkout, edit `.env.local` and restart Vite:
+
+```dotenv
+VITE_USE_MOCK_API=true
+VITE_API_URL=
+```
+
+Copy `.env.example` to `.env.local` if the file does not exist; keep existing private configuration when editing it. See [FastAPI live mode](#fastapi-live-mode) for backend features.
+
+### Build and verify
+
 ```powershell
 npm test
 npm run test:ui
@@ -192,6 +208,26 @@ npm run preview
 ```
 
 Open **http://127.0.0.1:4173**. Build output goes into `dist/`. Configure the documented security headers and backend routing when hosting elsewhere; see [SECURITY.md](SECURITY.md).
+
+<a id="publish-demo"></a>
+
+<details>
+<summary><strong>Publish the demo — one-time owner setup</strong></summary>
+
+1. Open the repository's **[Settings → Pages](https://github.com/kevv1011/Echelon-Cycling/settings/pages)**.
+2. Under **Build and deployment → Source**, select **GitHub Actions**.
+3. Commit and push the included workflow, hosted-demo app changes and README to `main` using your usual workflow.
+4. In **[Actions](https://github.com/kevv1011/Echelon-Cycling/actions)**, wait for **Deploy Echelon demo** to finish successfully. Its deployment link is the demo URL above. After the first successful deployment, remove the first-launch note from the demo section.
+
+Later pushes to `main` update the demo automatically. You can also run the workflow manually from Actions. Only the built `dist/` directory is published; the Python server, local database and private account settings are not deployed. The workflow forces browser-only persistence and builds with `VITE_HOSTED_DEMO=true`, which labels the demo, hides private sign-in and disables backend requests/route comparison. It uses GitHub's built-in deployment token, so no personal token or API key is needed.
+
+To check that version locally, run `npm run test:ui -- --hosted-demo`. The usual build leaves backend features available.
+
+GitHub Pages serves the static demo with the build's CSP meta tag. It does not apply `public/_headers`; use a host that supports the documented HTTP headers for a private backend deployment.
+
+Setup follows the official [GitHub Pages workflow guide](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) and [Vite deployment guide](https://vite.dev/guide/static-deploy.html#github-pages).
+
+</details>
 
 Thirty-two frontend checks cover physics, chat, weather selection/cache freshness, custom geometry, GPX escaping, production CSP, GPS quality/jump/jitter filtering, pause/resume, watch cleanup, real clock ticking, session-status races and cross-tab sign-out. Twenty-seven backend tests cover persistence, idle/absolute session expiry, token rotation/cookie flags, access/request boundaries, routing/provider failures and graph safety heuristics. `npm run test:ui` mounts the full dashboard in a test DOM with mocked GPS/API data and verifies Leaflet layers, changing metrics and sign-out cleanup without real location access or tile downloads. These checks do not replace hardware field testing. Dependency audits are clean after patching the local environment's pip.
 

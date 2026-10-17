@@ -5,17 +5,21 @@ import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createServer} from 'vite';
 
+const hostedDemo=process.argv.includes('--hosted-demo');
+if(hostedDemo){process.env.VITE_HOSTED_DEMO='true';process.env.VITE_USE_MOCK_API='true';process.env.VITE_API_URL='';}
 const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost:5173',pretendToBeVisual:true});
 const replaced=new Map();
 for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,navigator:dom.window.navigator,localStorage:dom.window.localStorage,Event:dom.window.Event,CustomEvent:dom.window.CustomEvent,Element:dom.window.Element,HTMLElement:dom.window.HTMLElement,SVGElement:dom.window.SVGElement,requestAnimationFrame:callback=>setTimeout(()=>callback(performance.now()),16),cancelAnimationFrame:id=>clearTimeout(id),IS_REACT_ACT_ENVIRONMENT:true})){
  replaced.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,writable:true,configurable:true});
 }
 Object.defineProperty(window,'isSecureContext',{value:true});
-let positionCallback,watchCalls=0,cleared=0;
+let positionCallback,watchCalls=0,cleared=0,backendRequests=0;
+if(hostedDemo)localStorage.setItem('echelon:private-mode','true');
 Object.defineProperty(navigator,'geolocation',{value:{watchPosition:callback=>{positionCallback=callback;watchCalls++;return 42;},clearWatch:id=>{assert.equal(id,42);cleared++;}}});
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async input=>{
  const url=new URL(String(input),'http://localhost:5173');
+ if(url.pathname.startsWith('/api/')){backendRequests++;if(hostedDemo)throw new Error('Hosted demo must not contact a private API');}
  let data;
  if(url.pathname==='/api/auth/status')data={passwordRequired:false,authenticated:true,sessionRemainingSeconds:null};
  else if(url.hostname==='api.open-meteo.com'){
@@ -31,6 +35,7 @@ try{
  const {default:App}=await server.ssrLoadModule('/src/App.jsx');
  await act(async()=>{root.render(React.createElement(React.StrictMode,null,React.createElement(App)));await flush();});
  assert.equal(watchCalls,0,'Loading the app must not request location');
+ if(hostedDemo){assert.ok(document.querySelector('.topbar').textContent.includes('DEMO MODE'),'Hosted demo identifies itself');assert.ok(!document.querySelector('.access-button'),'Hosted demo has no private sign-in control');}
  const start=[...document.querySelectorAll('button')].find(b=>b.textContent==='Start ride');
  assert.ok(start,'Start ride control exists');
  await act(async()=>{start.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await flush();});
@@ -52,7 +57,8 @@ try{
  assert.equal(document.querySelector('.gps-badge').textContent,'GPS OFF');
  assert.ok(document.querySelector('.ride-live-metrics').textContent.includes('0.00'),'Sign-out clears the active ride when requested');
  assert.ok(!localStorage.getItem('echelon:gps'),'GPS history is not persisted');
- console.log('Live dashboard integration passed: opt-in GPS, changing metrics, Leaflet layers, and sign-out cleanup.');
+ if(hostedDemo)assert.equal(backendRequests,0,'Hosted demo must make zero backend requests');
+ console.log(`${hostedDemo?'Hosted demo':'Live dashboard'} integration passed: opt-in GPS, changing metrics, Leaflet layers, and sign-out cleanup.${hostedDemo?' No backend requests or sign-in required.':''}`);
 }finally{
  await act(async()=>root.unmount());await server.close();globalThis.fetch=originalFetch;dom.window.close();
  for(const [key,descriptor] of replaced){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}
