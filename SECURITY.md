@@ -1,6 +1,14 @@
 # Security and privacy
 
-Echelon is a **single-owner application**, not a multi-tenant service. These controls reduce specific risks; they do not constitute a penetration test or a guarantee of security.
+Echelon supports local/private-owner mode and an optional personal-account mode (`ECHELON_AUTH_MODE=google`). The hosted demo remains account-free until the account backend is configured. These controls reduce specific risks; they do not constitute a penetration test or a guarantee of security.
+
+## Personal rider accounts
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) before enabling account mode. Google OIDC uses Authlib's authorization-code flow with state, nonce and PKCE. Identity is keyed by Google's stable `sub`, never by an email address supplied by the browser. Verified email is required; Google access/refresh/ID tokens are not persisted. A separate signed, HttpOnly, SameSite=Lax OAuth-state cookie lasts ten minutes so the callback can work. The application cookie remains HttpOnly, Secure on public sites, SameSite=Strict and scoped to `/api`.
+
+Each rider has distinct database profile and plan rows. All reads, writes, deletes and imports use the authenticated session's user ID; clients cannot choose an owner. The `X-Echelon-Account` guard rejects requests from a stale tab whose cookie now belongs to someone else. Browser caches are namespaced per rider and account changes clear the visible workspace/recording. Keeping offline copies leaves readable data on that device; this is not encryption. Legacy owner records and browser demo copies are never automatically assigned to Google users. Import is explicit and server-validated.
+
+Account session token digests are stored in PostgreSQL, survive API restarts, expire after 30 minutes idle/eight hours absolute, and are revoked on sign-out. Explicit activity extends only the idle deadline. No more than ten sessions per rider are retained. Attempting sign-out stops GPS immediately, even if the network request fails. The UI reports a failed revocation and does not claim the server session ended; retry when connected. Successful sign-out affects the current browser session, not all devices and not the Google account. Account writes require the configured browser origin; public account deployments require PostgreSQL, secure cookies and an exact HTTPS app origin. Use a same-origin Vercel `/api` proxy. Rate limits and road cache still require a single worker and deployment-specific edge protection; no distributed rate-limit store is included.
 
 ## Default local operation
 
@@ -39,7 +47,7 @@ Do not deploy until the local app has been reviewed. For a future private deploy
 - Keep Uvicorn behind a trusted proxy; use `--no-proxy-headers` unless trusted proxy IPs are explicitly configured. Put TLS and shared edge rate limits on that proxy. Do not add public access to the database.
 - Use one API worker for the current in-memory sessions, rate limits and routing cache. Multiple replicas require a shared session/rate-limit store and deployment-specific operational review.
 - Put secrets in the server environment/secret manager, never in a `VITE_` variable, frontend bundle, URL, repository or committed `.env` file.
-- Add user identity and per-user record ownership before adapting this single-owner API for multiple users. A password shared among unrelated users is not tenant isolation.
+- Use Google account mode for unrelated riders. The owner-password mode is only for one private owner; sharing that password does not separate rider data.
 
 `public/_headers` supplies HTTPS headers for hosts that support that format. Other hosts must set equivalent headers. A build-time CSP meta tag protects the standalone production HTML, but framing protection requires the actual HTTP header. If using an explicit `VITE_API_URL`, update the hosting `connect-src` policy to include only that HTTPS API origin; the Vite build/preview configuration already includes it. The default same-origin setup needs no CSP edit.
 
@@ -68,9 +76,10 @@ Lower mapped exposure is a **heuristic** based on road tags, not a measured acci
 ```powershell
 npm test
 npm run test:ui
+npm run test:accounts
 npm run build
 npm audit
-.\.venv\Scripts\python.exe -m unittest server.test_api server.test_routing
+.\.venv\Scripts\python.exe -m unittest server.test_accounts server.test_api server.test_routing
 .\.venv\Scripts\python.exe -m pip_audit --progress-spinner off
 ```
 

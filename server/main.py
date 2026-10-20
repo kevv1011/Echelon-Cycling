@@ -1,4 +1,4 @@
-"""Echelon single-owner API. Local by default; authenticated HTTPS for public hosts."""
+"""Echelon API: local/private owner by default, optional per-rider Google accounts."""
 import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -7,17 +7,20 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import RedirectResponse
+from sqlalchemy.exc import IntegrityError
+from server.accounts import Base, UserProfile, UserPlan, SessionStore
 from pydantic import Field, model_validator
 from server.security import Security, SecurityMiddleware
 from server.routing import router as routing_router, StrictModel, Point
 from sqlalchemy import JSON, DateTime, Integer, String, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./echelon.db')
+if DATABASE_URL.startswith(('postgresql://', 'postgres://')):
+    DATABASE_URL = 'postgresql+psycopg://' + DATABASE_URL.split('://', 1)[1]
 engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}, pool_pre_ping=True)
-
-class Base(DeclarativeBase):
-    pass
 
 class RiderRecord(Base):
     __tablename__ = 'rider_profiles'
@@ -103,20 +106,93 @@ async def lifespan(app):
     engine.dispose()
 
 security = Security()
+security.account_store = SessionStore(lambda: engine)
+google, app_origin, state_secret = None, '', ''
+if security.auth_mode == 'google':
+    from server.oauth import configure_google
+    google, app_origin, state_secret = configure_google(security)
+    if not app_origin.startswith(('http://localhost:', 'http://127.0.0.1:')) and not DATABASE_URL.startswith('postgresql+psycopg://'):
+        raise RuntimeError('Public rider accounts require a persistent PostgreSQL database')
 app = FastAPI(title='Echelon Cycling API', version='1.1.0', lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(routing_router)
 app.add_middleware(SecurityMiddleware, security=security)
-app.add_middleware(CORSMiddleware, allow_origins=security.origins, allow_credentials=True, allow_methods=['GET', 'PUT', 'POST', 'DELETE'], allow_headers=['Content-Type'])
+app.add_middleware(CORSMiddleware, allow_origins=security.origins, allow_credentials=True, allow_methods=['GET', 'PUT', 'POST', 'DELETE'], allow_headers=['Content-Type', 'X-Echelon-Account'])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=security.hosts)
+if google:
+    app.add_middleware(SessionMiddleware, secret_key=state_secret, session_cookie='echelon_oauth',
+        max_age=600, same_site='lax', https_only=security.secure_cookie, path='/api/auth')
+
+def account_id(request):
+    if security.auth_mode != 'google':
+        return None
+    user = security.account_store.get(request.cookies.get('echelon_session', ''))
+    if not user:
+        raise HTTPException(401, 'Sign in to your rider account')
+    return user['id']
+
+def set_session(response, token):
+    response.set_cookie('echelon_session', token, httponly=True, secure=security.secure_cookie,
+        samesite='strict', max_age=8 * 3600, path='/api')
+
+@app.get('/api/auth/google')
+async def google_start(request: Request):
+    if google is None:
+        raise HTTPException(404, 'Google sign-in is not configured')
+    try:
+        return await google.authorize_redirect(request, app_origin + '/api/auth/google/callback')
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(503, 'Google sign-in is temporarily unavailable. Please try again.') from None
+
+@app.get('/api/auth/google/callback')
+async def google_callback(request: Request):
+    if google is None:
+        raise HTTPException(404, 'Google sign-in is not configured')
+    from authlib.integrations.base_client.errors import OAuthError
+    from joserfc.errors import JoseError
+    try:
+        token = await google.authorize_access_token(request)
+        session = security.account_store.issue(token.get('userinfo'), request.cookies.get('echelon_session', ''))
+    except (OAuthError, JoseError, httpx.HTTPError, ValueError, IntegrityError):
+        request.session.clear()
+        return RedirectResponse(app_origin + '/?auth_error=google', status_code=303)
+    request.session.clear()
+    response = RedirectResponse(app_origin + '/', status_code=303)
+    set_session(response, session)
+    return response
 
 class LoginRequest(StrictModel):
     password: str = Field(min_length=1, max_length=256)
+
+class ImportRequest(StrictModel):
+    profile: RiderProfile | None = None
+    plans: list[RidePlan] = Field(default_factory=list, max_length=50)
+
+@app.post('/api/account/import')
+def import_browser_data(payload: ImportRequest, request: Request):
+    owner = account_id(request)
+    if owner is None:
+        raise HTTPException(400, 'Import requires a personal rider account')
+    imported = 0
+    with Session(engine) as db:
+        if payload.profile is not None:
+            db.merge(UserProfile(user_id=owner, data=payload.profile.model_dump()))
+        for plan in payload.plans:
+            if db.get(UserPlan, (owner, plan.id)):
+                continue
+            db.add(UserPlan(user_id=owner, id=plan.id, data=plan.model_dump(mode='json')))
+            db.flush()
+            imported += 1
+        db.commit()
+    return {'imported': imported, 'skipped': len(payload.plans) - imported}
 
 @app.get('/api/auth/status')
 def auth_status(request: Request):
     token = request.cookies.get('echelon_session', '')
     authenticated = security.permitted(request.client.host, token)
-    return {'passwordRequired': bool(security.password), 'authenticated': authenticated, 'sessionRemainingSeconds': security.remaining(token) if authenticated and security.password else None, 'serverTime': datetime.now(timezone.utc).isoformat()}
+    user = security.account_store.get(token) if security.auth_mode == 'google' and authenticated else None
+    return {'passwordRequired': security.auth_mode == 'google' or bool(security.password), 'authMode': security.auth_mode,
+            'user': {k: user[k] for k in ('id', 'email', 'name')} if user else None,
+            'authenticated': authenticated, 'sessionRemainingSeconds': security.remaining(token) if authenticated and (security.password or user) else None, 'serverTime': datetime.now(timezone.utc).isoformat()}
 
 @app.post('/api/auth/login')
 def login(payload: LoginRequest, response: Response, request: Request):
@@ -124,7 +200,7 @@ def login(payload: LoginRequest, response: Response, request: Request):
     if not token:
         raise HTTPException(401, 'Invalid credentials')
     security.logout(request.cookies.get('echelon_session', ''))
-    response.set_cookie('echelon_session', token, httponly=True, secure=security.secure_cookie, samesite='strict', max_age=8 * 3600, path='/api')
+    set_session(response, token)
     return {'authenticated': True}
 
 @app.post('/api/auth/activity')
@@ -145,36 +221,46 @@ def health():
     return {'status': 'ok', 'service': 'echelon-cycling'}
 
 @app.get('/api/profile', response_model=RiderProfile)
-def get_profile():
+def get_profile(request: Request):
+    owner = account_id(request)
     with Session(engine) as db:
-        row = db.get(RiderRecord, 1)
+        row = db.get(UserProfile, owner) if owner else db.get(RiderRecord, 1)
         return row.data if row else RiderProfile()
 
 @app.put('/api/profile', response_model=RiderProfile)
-def put_profile(profile: RiderProfile):
+def put_profile(profile: RiderProfile, request: Request):
+    owner = account_id(request)
     with Session(engine) as db:
-        db.merge(RiderRecord(id=1, data=profile.model_dump()))
+        db.merge(UserProfile(user_id=owner, data=profile.model_dump()) if owner else RiderRecord(id=1, data=profile.model_dump()))
         db.commit()
     return profile
 
 @app.get('/api/plans', response_model=list[RidePlan])
-def get_plans(limit: int = Query(default=50, ge=1, le=100)):
+def get_plans(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    owner = account_id(request)
     with Session(engine) as db:
+        if owner:
+            return [row.data for row in db.scalars(select(UserPlan).where(UserPlan.user_id == owner).order_by(UserPlan.created_at.desc()).limit(limit))]
         return [row.data for row in db.scalars(select(PlanRecord).order_by(PlanRecord.created_at.desc()).limit(limit))]
 
 @app.post('/api/plans', response_model=RidePlan, status_code=201)
-def post_plan(plan: RidePlan):
+def post_plan(plan: RidePlan, request: Request):
+    owner = account_id(request)
     with Session(engine) as db:
-        if db.get(PlanRecord, plan.id):
+        if db.get(UserPlan, (owner, plan.id)) if owner else db.get(PlanRecord, plan.id):
             raise HTTPException(409, 'A ride plan with this ID already exists')
-        db.add(PlanRecord(id=plan.id, data=plan.model_dump(mode='json')))
-        db.commit()
+        db.add(UserPlan(user_id=owner, id=plan.id, data=plan.model_dump(mode='json')) if owner else PlanRecord(id=plan.id, data=plan.model_dump(mode='json')))
+        try:
+            db.commit()
+        except IntegrityError:
+            raise HTTPException(409, 'A ride plan with this ID already exists') from None
     return plan
 
 @app.delete('/api/plans/{plan_id}', status_code=204)
-def delete_plan(plan_id: str):
+def delete_plan(plan_id: str, request: Request):
+    owner = account_id(request)
     with Session(engine) as db:
-        row = db.get(PlanRecord, plan_id)
+        row = db.get(UserPlan, (owner, plan_id)) if owner else db.get(PlanRecord, plan_id)
         if row is None:
             raise HTTPException(404, 'Ride plan not found')
         db.delete(row)

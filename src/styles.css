@@ -81,3 +81,7 @@ html{background:var(--page);scroll-padding-bottom:90px}body{color:var(--text);ba
   [data-keyboard-open] .director{height:calc(var(--viewport-height,100dvh) - 90px);min-height:180px}
   .planner-preferences label,.toggle-label{min-height:44px}
 }
+
+/* Account controls share the current light/dark palette. */
+.api-access{overflow-wrap:anywhere}.api-access fieldset{border:1px solid var(--line);border-radius:8px;padding:16px;margin:20px 0;min-width:0}.api-access fieldset legend{padding:0 6px;font-weight:600}.api-access .access-status strong{overflow-wrap:anywhere}.access-button{max-width:220px}.access-button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.api-access .clear-offline{min-height:44px}.api-access .settings-form .clear-offline{flex-direction:row;align-items:flex-start}.api-access .clear-offline input[type="checkbox"]{width:20px;height:20px;min-height:20px;padding:0;flex:0 0 20px}

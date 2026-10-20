@@ -39,3 +39,7 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Hosting metadata and downloaded Google OAuth credentials
+.vercel/
+client_secret*.json

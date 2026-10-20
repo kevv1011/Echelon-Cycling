@@ -9,8 +9,45 @@ import {useClock} from '../src/hooks/useClock.js';
 import {apiRequest,advanceAuthEpoch} from '../src/services/api.js';
 import useTheme from '../src/hooks/useTheme.js';
 import useMobileViewport from '../src/hooks/useMobileViewport.js';
+import {readLocal,writeLocal} from '../src/services/storage.js';
+import {setWorkspaceIdentity,getWorkspaceIdentity,clearWorkspace} from '../src/services/workspace.js';
+
+test('browser copies remain private to each rider and never silently import demo data',async()=>{
+ const env=setup();
+ try{
+  writeLocal('profile',{ftp:250});writeLocal('plans',[{id:'demo-plan'}]);
+  setWorkspaceIdentity('rider-a');assert.equal(readLocal('profile',null),null);assert.deepEqual(readLocal('plans',[]),[]);
+  writeLocal('profile',{ftp:300});writeLocal('plans',[{id:'a-plan'}]);
+  setWorkspaceIdentity('rider-b');assert.equal(readLocal('profile',null),null);writeLocal('plans',[{id:'b-plan'}]);
+  clearWorkspace('rider-a');assert.deepEqual(readLocal('plans',[]),[{id:'b-plan'}]);
+  setWorkspaceIdentity(null);assert.equal(readLocal('profile',null).ftp,250);assert.equal(readLocal('plans',[])[0].id,'demo-plan');
+ }finally{setWorkspaceIdentity(null);await env.cleanup();}
+});
+
+test('switching accounts resets the previous workspace before using the new account namespace',async()=>{
+ const env=setup(),originalFetch=globalThis.fetch;let api,user='rider-a',clears=0;
+ globalThis.fetch=async()=>new Response(JSON.stringify({authMode:'google',passwordRequired:true,authenticated:true,user:{id:user,name:user},sessionRemainingSeconds:1800}),{headers:{'Content-Type':'application/json'}});
+ function Harness(){api=useApiSession();return null;}
+ window.addEventListener('echelon:api-disconnected',event=>{if(event.detail?.identityChanged)clears++;});
+ try{
+  await act(async()=>env.root.render(React.createElement(Harness)));assert.equal(getWorkspaceIdentity(),'rider-a');
+  user='rider-b';await act(async()=>api.refresh());
+  assert.equal(clears,1);assert.equal(api.user.id,'rider-b');assert.equal(getWorkspaceIdentity(),'rider-b');
+ }finally{globalThis.fetch=originalFetch;setWorkspaceIdentity(null);await env.cleanup();}
+});
+
+test('a delayed successful response from the previous account cannot update the new workspace',async()=>{
+ const env=setup(),originalFetch=globalThis.fetch;let resolve,headers;
+ setWorkspaceIdentity('rider-a');globalThis.fetch=(_url,options)=>{headers=options.headers;return new Promise(r=>resolve=r);};
+ try{
+  const pending=apiRequest('/profile');assert.equal(headers['X-Echelon-Account'],'rider-a');
+  advanceAuthEpoch();setWorkspaceIdentity('rider-b');resolve(new Response(JSON.stringify({ftp:300})));
+  await assert.rejects(pending,error=>error.status===409);
+ }finally{globalThis.fetch=originalFetch;setWorkspaceIdentity(null);await env.cleanup();}
+});
 
 function setup(){
+ setWorkspaceIdentity(null);
  const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost:5173',pretendToBeVisual:true});
  const previous=new Map();
  const overrides={window:dom.window,document:dom.window.document,navigator:dom.window.navigator,localStorage:dom.window.localStorage,Event:dom.window.Event,CustomEvent:dom.window.CustomEvent,IS_REACT_ACT_ENVIRONMENT:true};
@@ -29,6 +66,8 @@ test('mounted GPS hook requests nothing until clicked, updates metrics, and stop
   const at=Date.now();const point=(timestamp,latitude)=>({timestamp,coords:{latitude,longitude:120,accuracy:5,speed:4}});
   await act(async()=>success(point(at,15)));await act(async()=>success(point(at+1000,15.0001)));
   assert.equal(api.state.phase,'active');assert.ok(api.state.distanceM>11);assert.ok(document.querySelector('output').textContent.includes('11.1'));
+  await act(async()=>window.dispatchEvent(new Event('echelon:signout-started')));
+  assert.equal(api.state.gps,'off','A sign-out attempt stops location even before the server responds');
   await act(async()=>window.dispatchEvent(new Event('echelon:session-expired')));
   assert.equal(api.state.gps,'off');assert.equal(api.state.phase,'paused');assert.deepEqual(cleared,[0]);const retained=api.state.distanceM;
   await act(async()=>success(point(at+2000,15.0002)));assert.equal(api.state.distanceM,retained);

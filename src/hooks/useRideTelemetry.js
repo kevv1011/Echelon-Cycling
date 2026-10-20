@@ -9,6 +9,7 @@ export default function useRideTelemetry(){
   },[]);
   const stopGps=useCallback(()=>{stop.current?.();stop.current=null;setState(s=>({...(['active','arming'].includes(s.phase)?pauseRecording(s,performance.now()):s),gps:'off',fix:null,anchor:null,speed:null,notice:'GPS stopped. Location is no longer being watched.'}));},[]);
   useEffect(()=>()=>stop.current?.(),[]);
+  useEffect(()=>{window.addEventListener('echelon:signout-started',stopGps);return()=>window.removeEventListener('echelon:signout-started',stopGps);},[stopGps]);
   useEffect(()=>{const locked=e=>{stopGps();if(e.detail?.clearOffline)setState(initialRideTelemetry());};window.addEventListener('echelon:api-disconnected',locked);window.addEventListener('echelon:session-expired',locked);return()=>{window.removeEventListener('echelon:api-disconnected',locked);window.removeEventListener('echelon:session-expired',locked);};},[stopGps]);
   const start=()=>{setState(s=>startRecording(s,performance.now(),Date.now()));enableGps();};
   const pause=()=>setState(s=>pauseRecording(s,performance.now()));

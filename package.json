@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "configure:backend": "node scripts/connect-backend.mjs",
+    "test:accounts": "node scripts/verify-accounts-ui.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:ui": "node scripts/verify-live-ui.mjs",
     "test": "node --test tests/physics.test.js tests/weather.test.js tests/routes.test.js tests/gps.test.js tests/lifecycle.test.js"

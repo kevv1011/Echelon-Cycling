@@ -1,4 +1,4 @@
-import {API_BASE,getAuthEpoch} from './api.js';
+import {apiRequest,getAuthEpoch,usesBackend} from './api.js';
 const manilaParts=date=>{
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);
   const part=type=>parts.find(p=>p.type===type).value;
@@ -29,11 +29,15 @@ export async function fetchWeather(route, ride, count, signal) {
   end.setUTCHours(end.getUTCHours() + count);
   const endDate = manilaParts(end).date;
   const params = new URLSearchParams({ latitude: route.lat, longitude: route.lon, hourly: 'temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,wind_direction_10m', wind_speed_unit: 'kmh', timezone: 'Asia/Manila', start_date: ride.date, end_date: endDate });
-  const endpoint = import.meta.env?.VITE_USE_MOCK_API === 'false' ? `${API_BASE}/api/weather` : 'https://api.open-meteo.com/v1/forecast';
-  const res = await fetch(`${endpoint}?${params}`, { signal, ...(import.meta.env?.VITE_USE_MOCK_API === 'false' ? { credentials: 'include' } : {}) });
-  if(res.status===401&&startedEpoch===getAuthEpoch()&&typeof window!=='undefined')window.dispatchEvent(new Event('echelon:session-expired'));
-  if (!res.ok) throw new Error('Forecast unavailable for this date');
-  const { hourly: h } = await res.json();
+  let data;
+  if(usesBackend){data=await apiRequest(`/weather?${params}`,{signal});}
+  else{
+    const res=await fetch(`https://api.open-meteo.com/v1/forecast?${params}`,{signal});
+    if(!res.ok)throw new Error('Forecast unavailable for this date');
+    data=await res.json();
+  }
+  if(startedEpoch!==getAuthEpoch())throw new Error('Account changed during forecast request');
+  const { hourly: h } = data;
   const target = `${ride.date}T${ride.time.slice(0, 2)}:00`;
   const start = h.time.findIndex(t => t >= target);
   if (start < 0 || h.time.length - start < count) throw new Error('Forecast window unavailable');
