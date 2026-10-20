@@ -4,35 +4,28 @@
 
 Echelon is a wind, weather and ride-planning co-pilot for road cyclists. Plan a sunrise spin around Clark, scout a custom route, or work out how much fuel that “quick ride” will actually need.
 
-A carbon-and-amber dashboard brings together hourly forecasts, pacing and fueling estimates, custom maps, and opt-in live GPS. Built with **React 18 + Vite**, with an optional **FastAPI + SQLAlchemy** backend. Package name: `echelon-cycling`.
+A carbon-and-amber dashboard brings together hourly forecasts, pacing and fueling estimates, custom maps, and opt-in live GPS. Built with **React 18 + Vite**, **FastAPI**, and **PostgreSQL** for rider accounts.
 
-### [▶ Demo Mode — try Echelon in your browser](https://kevv1011.github.io/Echelon-Cycling/)
+### [🚴 Open Echelon — sign in with Google](https://echelon-cycling.vercel.app/)
 
-Want to host this demo on Vercel? See [Deploy the browser demo on Vercel](#deploy-the-browser-demo-on-vercel).
+Your own rider setup and saved cue sheets follow your Google account. The app runs on a Vercel frontend with a Render API and PostgreSQL database. Use a Google account listed as a test user while the OAuth app is in Testing.
 
-No downloads. No terminal. Just open the demo and plan a ride.
+### [▶ Demo Mode — try it without an account](https://kevv1011.github.io/Echelon-Cycling/)
 
-Also live on **[Vercel](https://echelon-cycling.vercel.app/)**. Personal Google accounts and private rider storage are implemented locally; see [the deployment guide](DEPLOYMENT.md) to connect the account backend before enabling them.
+No downloads, installation, or sign-in. Open the GitHub Pages demo and plan a ride right away. Demo data stays in that browser and does not automatically appear in an account.
 
-[Take a quick tour](#quick-tour) · [Build a route](#build-your-own-route) · [Developer setup](#developer-setup) · [Security](SECURITY.md)
+[Take a quick tour](#quick-tour) · [Build a route](#build-your-own-route) · [How accounts work](#rider-accounts) · [Developer setup](#developer-setup) · [Security](SECURITY.md)
 
-<a id="demo-mode"></a>
+## Choose your ride
 
-## Deploy the browser demo on Vercel
+| | [Live app](https://echelon-cycling.vercel.app/) | [Demo Mode](https://kevv1011.github.io/Echelon-Cycling/) |
+| --- | --- | --- |
+| Sign-in | Google account (currently limited to OAuth test users) | None |
+| Rider setup and cue sheets | Stored for your account in PostgreSQL | Stored in this browser |
+| Custom route comparison | Available through the Render API | Route drawing only; comparison requires the API |
+| Weather, planning, GPS | Available | Available |
 
-1. On Vercel's **New Project** page, enter `https://github.com/kevv1011/Echelon-Cycling` in the repository URL box. If Vercel does not find it, choose the GitHub account that owns `kevv1011/Echelon-Cycling` or grant Vercel access to that repository in GitHub.
-2. Import the repo with **Root Directory** `./`. The committed `vercel.json` selects **Vite**, runs `npm run build`, publishes `dist`, and sets response security headers. Use the default install command (`npm install`/Vercel's automatic install); the lockfile is committed.
-3. Before **Deploy**, add these **Environment Variables** for Production and Preview:
-
-   | Name | Value |
-   | --- | --- |
-   | `VITE_USE_MOCK_API` | `true` |
-   | `VITE_HOSTED_DEMO` | `true` |
-   | `VITE_API_URL` | leave unset |
-
-4. Deploy, then open the assigned `*.vercel.app` URL on a phone. Check the theme switch, Plan/Ride/Chat navigation, weather, map tiles and opt-in GPS. Location needs HTTPS and device permission.
-
-This first Vercel deployment is the same browser-only demo as GitHub Pages: no private sign-in, server-side route comparison, shared accounts or database. Profiles and plans remain on each visitor's device. The repo currently does **not** include a Vercel rewrite to a backend; add one only when the multi-user API is ready. Vercel will redeploy when you push updates to the connected GitHub branch. Do not put passwords, database URLs or Google OAuth secrets in `VITE_` variables; those become public in the browser bundle.
+The live app has been deployed and Google sign-in has been tested. Route comparison and GPS still depend on road-data availability, browser location permission, and the device you use. See [deployment instructions](DEPLOYMENT.md) if you are running your own instance.
 
 ## 🕹️ Try demo mode
 
@@ -48,9 +41,19 @@ Pick a route, change your rider setup and ask the Ride Director for a plan. No a
 | Clock | Ticks in Philippine time (PHT / UTC+8) |
 | GPS and recorded ride metrics | Optional: allow location access to record actual movement on a compatible device |
 | Street map | Explore OpenStreetMap in your browser |
-| Custom route comparison and private owner sign-in | Available in the backend-enabled app; not included in the hosted demo |
+| Custom route comparison | Available in the signed-in live app; not included in the hosted demo |
 
 Your demo plans stay on this device. GPS starts only with your permission, and readings depend on actual movement. Internet access is needed for weather and map tiles. Export an active GPS recording before refreshing or leaving the page.
+
+<a id="rider-accounts"></a>
+
+## 🔐 Your rider account
+
+Open the [live app](https://echelon-cycling.vercel.app/) and choose **Continue with Google**. Google handles sign-in; Echelon requests only your basic identity (`openid`, email and profile), not access to your Gmail inbox. You can use a personal or alternate Google account once it has been added as a test user. Email/password and email-link sign-in are not available yet.
+
+After signing in, use **Rider garage** for your bike and rider setup, then save a cue sheet. Those details belong to that Google account. Select the rider badge in the header to see your account, sign out, or explicitly import selected browser-demo data from the **same site and browser**. Import is optional; demo data never uploads on its own. Browser storage from the separate GitHub Pages demo cannot be read by the Vercel site. On a shared phone, leave the offline-copy clearing checkbox selected when signing out.
+
+The account service uses an HttpOnly, Secure session cookie and separates riders by their Google account ID. GPS recording remains in the current tab until you export it; signing out stops location tracking. For the limits of the current deployment and how to report a security issue, see [SECURITY.md](SECURITY.md).
 
 <a id="quick-tour"></a>
 
@@ -105,7 +108,7 @@ In the route builder, enable GPS and choose **Add current location as stop** to 
 
 Forecasts remain tied to your selected route and planning window. They refresh every ten minutes while visible, on reconnection and after returning to a stale tab. The displayed sync age changes over time. A failed refresh retains matching real data as **cached** with its original timestamp; simulated weather is used only if no matching real snapshot exists. These forecasts and FTP/pressure/fueling estimates are distinct from current GPS measurements. No power, cadence, heart-rate or other hardware sensor connection is fabricated.
 
-The backend status is checked periodically and on focus/reconnection; the header reports checking, offline, local mode, signed in or sign-in required. Local mode is **not an account**. Password protection is a single-owner private sign-in; it is not multi-user registration. See [SECURITY.md](SECURITY.md) to enable it. Background browser/OS suspension can interrupt GPS and networking; this is not guaranteed background navigation or an offline PWA.
+The backend status is checked periodically and on focus/reconnection; the header reports checking, offline, local mode, signed in or sign-in required. The live app requires Google sign-in for account data. Local mode belongs to the separate browser demo and is **not an account**. Background browser/OS suspension can interrupt GPS and networking; this is not guaranteed background navigation or an offline PWA.
 
 <a id="build-your-own-route"></a>
 
@@ -113,7 +116,7 @@ The backend status is checked periodically and on focus/reconnection; the header
 
 Click **Build my route** above the route selector. Click the street map to add a start, finish and optional via stops, or enter coordinates with the keyboard. You can undo/remove stops or return to the start. Up to eight stops are supported within a **20 km diagonal planning area**; divide longer rides into sections.
 
-Start FastAPI even when using demo persistence. Then choose **Compare cycling routes** to compare the shortest eligible route with a path that favors cycleways, quieter road classes, lower tagged speeds and optionally lit roads. Tagged rough/unpaved roads are excluded by default. The comparison shows dedicated-cycleway, primary/secondary-road, high-speed, lighting and missing-tag percentages, plus snap gaps and data warnings. The exposure reduction is a change in the model's total weighted road cost, **not a crash-risk percentage**. If both paths are the same, the app explicitly says no lower-exposure alternative was found.
+In the [live app](https://echelon-cycling.vercel.app/), choose **Compare cycling routes** to compare the shortest eligible route with a path that favors cycleways, quieter road classes, lower tagged speeds and optionally lit roads. Tagged rough/unpaved roads are excluded by default. The comparison shows dedicated-cycleway, primary/secondary-road, high-speed, lighting and missing-tag percentages, plus snap gaps and data warnings. The exposure reduction is a change in the model's total weighted road cost, **not a crash-risk percentage**. If both paths are the same, the app explicitly says no lower-exposure alternative was found. Local developers must start FastAPI for this feature; it is disabled in Demo Mode.
 
 Use a route to update dashboard distance, weather coordinates, wind bearing and fueling/pacing estimates. Climbing remains your manually supplied estimate. Custom geometry is included in saved cue sheets and can be exported as a **scouting GPX**, including XML-escaped names. Chat preserves mapped distance; edit the map stops to change it. Selecting a preset clears the custom geometry.
 
@@ -121,9 +124,9 @@ The street graph comes from public OpenStreetMap Overpass instances, with a ten-
 
 <a id="fastapi-live-mode"></a>
 
-## 🔧 FastAPI live mode
+## 🔧 Run the API locally
 
-For route comparison, SQL persistence and optional private owner sign-in, install **Python 3.11+** and run this in a second terminal from the project folder:
+For route comparison and SQL persistence in a local development copy, install **Python 3.11+** and run this in a second terminal from the project folder. The default local API uses the legacy single-owner mode; the hosted app uses Google accounts with PostgreSQL as described in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ```powershell
 python -m venv .venv
@@ -155,10 +158,13 @@ API documentation routes are disabled. The available endpoints are:
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/health` | Service and SQL connectivity |
-| `GET /api/auth/status` | Local/private session status |
-| `POST /api/auth/login` | Start an eight-hour private session |
+| `GET /api/auth/status` | Sign-in mode, session and account status |
+| `GET /api/auth/google` | Start Google sign-in (Google mode) |
+| `GET /api/auth/google/callback` | Complete Google sign-in (Google mode) |
+| `POST /api/auth/login` | Start a private owner session (owner mode only) |
 | `POST /api/auth/logout` | Invalidate the session |
 | `POST /api/auth/activity` | Explicit activity extends idle time, within the absolute cap |
+| `POST /api/account/import` | Explicitly import selected same-browser demo data (Google mode) |
 | `POST /api/routes/plan` | Compare two cycling paths using mapped road tags |
 | `GET /api/profile` | Read the saved profile or defaults |
 | `PUT /api/profile` | Validate and save the rider profile |
@@ -169,7 +175,7 @@ API documentation routes are disabled. The available endpoints are:
 
 </details>
 
-If the backend disconnects, profile and plan saves fall back to browser localStorage with an explicit notification; weather retains a matching real snapshot as cached, or falls back to labeled simulated data if no matching snapshot exists. Browser copies remain visible alongside server plans. Offline copies are **not automatically uploaded** later. Live mode reads the server profile on startup when available. The API defaults to a **single-owner service**, local-only by default. Optional `ECHELON_AUTH_MODE=google` enables separate rider accounts and PostgreSQL sessions; see [DEPLOYMENT.md](DEPLOYMENT.md). Optional private sessions use HttpOnly cookies. Public host configuration requires a strong backend password, HTTPS frontend origins and secure cookies; wildcard hosts/origins are rejected. See [SECURITY.md](SECURITY.md) for setup, request/rate limits, privacy and remaining deployment requirements.
+If the backend disconnects after sign-in, profile and plan saves can fall back to account-scoped browser storage with an explicit notification; weather retains a matching real snapshot as cached, or falls back to labeled simulated data if no matching snapshot exists. Offline copies are **not automatically uploaded** later. Authentication failures do not become offline saves. The API defaults to a **single-owner service** for local development; the hosted app sets `ECHELON_AUTH_MODE=google` for separate rider accounts and PostgreSQL sessions. Private sessions use HttpOnly cookies. See [DEPLOYMENT.md](DEPLOYMENT.md) for hosting and [SECURITY.md](SECURITY.md) for request limits, privacy and remaining deployment requirements.
 
 ## 🧮 Under the handlebars
 
@@ -220,9 +226,10 @@ Copy `.env.example` to `.env.local` if the file does not exist; keep existing pr
 
 ```powershell
 npm test
+npm run test:accounts
 npm run test:ui
 npm run build
-.\.venv\Scripts\python.exe -m unittest server.test_api server.test_routing
+.\.venv\Scripts\python.exe -m unittest server.test_accounts server.test_api server.test_routing
 ```
 
 To inspect the production build locally:
@@ -253,9 +260,9 @@ Setup follows the official [GitHub Pages workflow guide](https://docs.github.com
 
 </details>
 
-Forty-two frontend checks cover physics, chat intent/relevance, question previews, forecast selection/cache freshness, theme persistence, phone keyboard viewport handling, custom geometry, GPX escaping, production CSP, GPS filtering, pause/resume, watch cleanup, clock updates and session races. Thirty-six backend tests cover persistence, idle/absolute session expiry, token rotation/cookie flags, access/request boundaries, routing/provider failures and graph safety heuristics. `npm run test:ui` mounts the full dashboard in a test DOM with mocked GPS/API data and checks greetings during forecast loading, focused replies, explicit ride changes, theme toggling, mobile navigation, Leaflet layers and sign-out cleanup. Add `-- --hosted-demo` to also verify that the demo makes no backend requests. `npm run test:accounts` additionally checks the locked Google sign-in screen, rider identity, explicit demo import and sign-out. Account tests verify cross-rider isolation, stale-tab write rejection, session revocation and OIDC validation with simulated Google responses. These checks do not replace live Google/PostgreSQL verification, browser layout review or hardware field testing. Dependency audits are time-specific; see [SECURITY.md](SECURITY.md) for commands to rerun them.
+The frontend checks cover physics, chat intent/relevance, forecast freshness, theme persistence, mobile behavior, custom geometry, GPX escaping, GPS filtering, clock updates and session races. Backend tests cover persistence, session expiry, access boundaries, routing failures, graph heuristics, cross-rider isolation and OIDC validation with simulated Google responses. `npm run test:ui` mounts the dashboard with mocked GPS/API data; add `-- --hosted-demo` to check that the demo makes no backend requests. `npm run test:accounts` checks the locked sign-in screen, rider identity, explicit import and sign-out. These checks complement the owner's successful live Google sign-in; they do not replace a second-account isolation check or GPS field testing. Dependency audits are time-specific; see [SECURITY.md](SECURITY.md) for commands to rerun them.
 
-The production build and React render checks pass. HTTP checks verify production CSP/framing headers, the same-origin API proxy, uncached private responses and rejection of unexpected Host/Origin headers. Live road-data verification encountered upstream HTTP 500/502 errors and timeouts at the public Overpass providers; route logic and failure behavior are verified with controlled road graphs. A browser automation surface is unavailable in this session, so interactive map/visual review remains for local testing. PostgreSQL compatibility is implemented with SQLAlchemy and psycopg but is not integration-tested against a running PostgreSQL instance.
+The production build and React render checks passed during implementation. The Render health endpoint and Google sign-in have since worked in the live deployment. The full save/sign-out/second-account flow and physical-phone GPS should still be checked before inviting more riders. Public Overpass route data can fail or time out; the app reports those failures rather than inventing a route. Automated backend tests use SQLite or mocked provider responses and do not exercise the deployed PostgreSQL service end to end.
 
 <details>
 <summary><strong>Where things live</strong></summary>
@@ -276,7 +283,9 @@ src/
   utils/forecastState.js     Cached-data and auto-sync decisions
   styles.css                 Carbon/amber telemetry design and print layout
 server/
-  main.py                    FastAPI, SQLAlchemy models, auth and weather
+  main.py                    FastAPI endpoints, persistence and weather
+  accounts.py                Rider accounts and PostgreSQL sessions
+  oauth.py                   Google OpenID Connect setup
   security.py                Access, session, request and rate boundaries
   routing.py                 OSM graph routing and exposure comparison
   requirements.txt           Python dependencies
@@ -289,5 +298,7 @@ tests/physics.test.js         Frontend model and parser checks
 ## 🤝 Credits and project workflow
 
 Repository: **[kevv1011/Echelon-Cycling](https://github.com/kevv1011/Echelon-Cycling)**. The project owner handles commits and pushes; assistant changes stay local for review.
+
+The current free Render PostgreSQL database is scheduled to expire on **November 19, 2026**. Move to durable storage and backups before relying on it for other riders' saved plans.
 
 Weather: Open-Meteo, with source attribution in the app. Maps: Leaflet and OpenStreetMap contributors; road graph via Overpass. Public-service policies apply; arrange appropriate providers before commercial/large-scale use. Icons: Lucide. Fonts: Space Grotesk, Inter and JetBrains Mono via Google Fonts, with local system fallbacks.
