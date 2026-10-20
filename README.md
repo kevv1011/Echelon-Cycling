@@ -8,11 +8,29 @@ A carbon-and-amber dashboard brings together hourly forecasts, pacing and fuelin
 
 ### [▶ Demo Mode — try Echelon in your browser](https://kevv1011.github.io/Echelon-Cycling/)
 
+Want to host this demo on Vercel? See [Deploy the browser demo on Vercel](#deploy-the-browser-demo-on-vercel).
+
 No downloads. No terminal. Just open the demo and plan a ride.
 
 [Take a quick tour](#quick-tour) · [Build a route](#build-your-own-route) · [Developer setup](#developer-setup) · [Security](SECURITY.md)
 
 <a id="demo-mode"></a>
+
+## Deploy the browser demo on Vercel
+
+1. On Vercel's **New Project** page, enter `https://github.com/kevv1011/Echelon-Cycling` in the repository URL box. If Vercel does not find it, choose the GitHub account that owns `kevv1011/Echelon-Cycling` or grant Vercel access to that repository in GitHub.
+2. Import the repo with **Root Directory** `./`. The committed `vercel.json` selects **Vite**, runs `npm run build`, publishes `dist`, and sets response security headers. Use the default install command (`npm install`/Vercel's automatic install); the lockfile is committed.
+3. Before **Deploy**, add these **Environment Variables** for Production and Preview:
+
+   | Name | Value |
+   | --- | --- |
+   | `VITE_USE_MOCK_API` | `true` |
+   | `VITE_HOSTED_DEMO` | `true` |
+   | `VITE_API_URL` | leave unset |
+
+4. Deploy, then open the assigned `*.vercel.app` URL on a phone. Check the theme switch, Plan/Ride/Chat navigation, weather, map tiles and opt-in GPS. Location needs HTTPS and device permission.
+
+This first Vercel deployment is the same browser-only demo as GitHub Pages: no private sign-in, server-side route comparison, shared accounts or database. Profiles and plans remain on each visitor's device. The repo currently does **not** include a Vercel rewrite to a backend; add one only when the multi-user API is ready. Vercel will redeploy when you push updates to the connected GitHub branch. Do not put passwords, database URLs or Google OAuth secrets in `VITE_` variables; those become public in the browser bundle.
 
 ## 🕹️ Try demo mode
 
