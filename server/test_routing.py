@@ -1,4 +1,5 @@
 import unittest
+from urllib.parse import parse_qs
 from unittest.mock import patch
 import httpx
 from fastapi import HTTPException
@@ -93,7 +94,7 @@ class UpstreamTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_failover_and_cache(self):
         calls=[]
         def handle(req):
-            calls.append(str(req.url))
+            calls.append(req)
             return httpx.Response(502) if len(calls)==1 else httpx.Response(200,json={'elements':network()})
         client=httpx.AsyncClient(transport=httpx.MockTransport(handle))
         with patch('server.routing.httpx.AsyncClient',return_value=client):
@@ -101,6 +102,11 @@ class UpstreamTests(unittest.IsolatedAsyncioTestCase):
             cached=await routing.fetch_network(request().waypoints)
         self.assertEqual(len(calls),2)
         self.assertEqual(result,cached)
+        query=parse_qs(calls[0].content.decode())['data'][0]
+        self.assertIn('way["highway"~"^(',query)
+        self.assertIn('cycleway',query)
+        self.assertIn('residential',query)
+        self.assertNotIn('motorway',query)
 
     async def test_throttling_is_respected_without_provider_rotation(self):
         calls=[]

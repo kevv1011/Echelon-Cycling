@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix='/api/routes')
 OVERPASS_URLS = ('https://overpass.private.coffee/api/interpreter', 'https://overpass-api.de/api/interpreter')
+ROUTABLE_HIGHWAYS = frozenset({'cycleway', 'residential', 'living_street', 'service', 'unclassified', 'tertiary', 'tertiary_link', 'secondary', 'secondary_link', 'primary', 'primary_link', 'path', 'track', 'footway', 'pedestrian'})
 MAX_NETWORK_BYTES = 12 * 1024 * 1024
 MAX_ELEMENTS = 100000
 MAX_GEOMETRY = 12000
@@ -56,7 +57,7 @@ def bounds(points):
 def road_info(tags, avoid_unpaved):
     kind = tags.get('highway', '')
     # Access, construction and barrier uncertainty are handled conservatively.
-    if kind not in {'cycleway', 'residential', 'living_street', 'service', 'unclassified', 'tertiary', 'tertiary_link', 'secondary', 'secondary_link', 'primary', 'primary_link', 'path', 'track', 'footway', 'pedestrian'}:
+    if kind not in ROUTABLE_HIGHWAYS:
         return None
     if tags.get('bicycle') in {'no', 'private', 'dismount', 'use_sidepath'} or tags.get('access') in {'no', 'private', 'customers', 'destination', 'permit'} or tags.get('vehicle') in {'no', 'private'}:
         return None
@@ -212,7 +213,10 @@ async def fetch_network(points):
     if cached and cached[0] > time.monotonic():
         _cache.move_to_end(bbox)
         return cached[1]
-    query = f'[out:json][timeout:18];way["highway"]({bbox});(._;>;);out body;'
+    # Fetch only road classes the graph can use. Dense areas otherwise spend
+    # provider time and response bytes on roads we immediately discard.
+    kinds = '|'.join(sorted(ROUTABLE_HIGHWAYS))
+    query = f'[out:json][timeout:18];way["highway"~"^({kinds})$"]({bbox});(._;>;);out body;'
     async with httpx.AsyncClient(timeout=22, follow_redirects=False, headers={'User-Agent': 'EchelonCycling/1.1 (local route planner)', 'Accept': 'application/json'}) as client:
         for endpoint in OVERPASS_URLS:
             try:
